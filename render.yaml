@@ -1,0 +1,33 @@
+services:
+  # ─── Backend API ──────────────────────────────────────────────────────────
+  - type: web
+    name: ien-backend
+    runtime: docker
+    rootDir: back
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CRON_API_KEY
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+
+  # ─── Frontend (Static Site) ───────────────────────────────────────────────
+  - type: static
+    name: ien-frontend
+    runtime: static
+    rootDir: front
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: commit

@@ -1,0 +1,84 @@
+services:
+  # ─── Base de datos ────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: ien-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - ien-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend ──────────────────────────────────────────────────────────────
+  backend:
+    build: ./back
+    container_name: ien-backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      MONGO_URI: mongodb://mongo:27017/ien
+      JWT_SECRET: ${JWT_SECRET}
+      CRON_API_KEY: ${CRON_API_KEY}
+      FRONTEND_URL: ${FRONTEND_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+    ports:
+      - "3000:3000"
+    networks:
+      - ien-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── Frontend (Nginx) ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./front
+      args:
+        VITE_API_URL: /api
+    container_name: ien-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    environment:
+      BACKEND_HOST: http://backend:3000
+      BACKEND_URL: http://backend:3000
+    networks:
+      - ien-net
+
+  # ─── Seeder (se ejecuta una sola vez y termina) ───────────────────────────
+  seeder:
+    build: ./back
+    container_name: ien-seeder
+    command: ["node", "src/seed.js"]
+    restart: "no"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/ien
+    networks:
+      - ien-net
+
+volumes:
+  mongo_data:
+    name: ien-mongo-data
+
+networks:
+  ien-net:
+    driver: bridge
