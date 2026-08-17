@@ -1,8 +1,8 @@
 [submodule "front"]
 	path = front
 	url = https://github.com/alex43x/ien-front.git
-	branch = dev
+	branch = main
 [submodule "back"]
 	path = back
 	url = https://github.com/alex43x/ien-back.git
-	branch = dev
+	branch = main
