@@ -15,12 +15,12 @@
 └──────────────────┘     └──────────────────┘     └──────────────────┘
 ```
 
-| Servicio   | Repo           | Tipo        | Puerto / Publish |
-|------------|----------------|-------------|------------------|
-| Frontend   | `ien-front`    | Static Site | `dist`           |
-| Backend    | `ien-back`     | Docker      | `3000`           |
-| MongoDB    | —              | Addon       | inyecta `MONGO_URI` |
-| Cron jobs  | —              | 2 jobs curl | —                |
+| Servicio   | Repo           | Tipo            | Puerto / Publish |
+|------------|----------------|-----------------|------------------|
+| Frontend   | `ien-front`    | Docker (nginx)  | `80`             |
+| Backend    | `ien-back`     | Docker          | `3000`           |
+| MongoDB    | —              | Addon           | inyecta `MONGO_URI` |
+| Cron jobs  | —              | 2 jobs curl     | —                |
 
 ## Paso 1 — Base de datos (Addon MongoDB)
 
@@ -54,29 +54,37 @@ Variables de entorno:
 | `EMAIL_FROM` | email de envío |
 | `FRONTEND_URL` | URL exacta del frontend (sin slash final). Se setea **después** de desplegar el frontend (CORS usa `origin: FRONTEND_URL`). |
 
-## Paso 3 — Frontend (Static Site)
+## Paso 3 — Frontend (servicio Docker con Nginx)
 
-Crear servicio → **Deploy from GitHub** → tipo **Static**:
+> **Nota**: Northflank **no tiene** un producto de "Static Site" (ni en la UI, ni en sus docs, ni en la
+> guía oficial de Vite). La vía correcta para servir el SPA es el `Dockerfile` + `nginx.conf` ya
+> incluidos en `ien-front`, que además resuelven el SPA fallback nativamente.
+
+Crear servicio → **Deploy from GitHub** → tipo **Docker**:
 
 | Campo | Valor |
 |-------|-------|
 | Repository | `ien-front` |
 | Branch | `main` |
-| Build path | `/` (raíz) |
-| Build command | `npm ci && npm run build` |
-| Publish directory | `dist` |
-| Node version | **≥ 20** (Vite 6 lo exige) |
+| Build type | `Dockerfile` |
+| Build context | `/` (raíz) |
+| Dockerfile location | `/Dockerfile` |
+| Port | `80` (público) |
 
-Build argument:
+> **Orden**: primero pushear el fix del `nginx.conf` (commit `ade2785`) y **después** crear el servicio,
+> para que el build use la plantilla corregida. Sin él, el proxy caía al default `backend:3000` y nginx
+> crasheaba con `host not found in upstream "backend"`.
+
+Variables de entorno (runtime, las lee nginx en el entrypoint):
 
 | Variable | Valor |
 |----------|-------|
-| `VITE_API_URL` | `https://<BACKEND>.northflank.app/api` |
+| `BACKEND_SCHEME` | `https` |
+| `BACKEND_HOST` | hostname del backend sin esquema: `<BACKEND>.northflank.app` (ej. `p01--ien-back--...code.run`) |
+| `BACKEND_PORT` | `443` |
 
-> **SPA fallback**: si refrescar rutas como `/login` o `/dashboard` devuelve 404, el static site
-> no está sirviendo `index.html` para rutas desconocidas. Solución: publicar el frontend como
-> **Docker/nginx** (ya hay `Dockerfile` + `nginx.conf` con `try_files ... /index.html` y proxy `/api`),
-> agregando `BACKEND_HOST=https://<BACKEND>.northflank.app` y `BACKEND_PORT=443`.
+> `VITE_API_URL` no hace falta: el `Dockerfile` usa `/api` por defecto y nginx proxea `/api/*` al backend.
+> Con este proxy, el navegador solo habla con el dominio del frontend (mismo origen → sin CORS).
 
 ## Paso 4 — CORS (`FRONTEND_URL`)
 
